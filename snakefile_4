@@ -1,8 +1,4 @@
 #input data
-from random import sample
-from sre_parse import expand_template
-
-
 SAMPS = ["1_S1", "2_S2"]
 rule all :
     input:

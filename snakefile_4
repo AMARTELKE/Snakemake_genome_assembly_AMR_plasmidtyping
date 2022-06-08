@@ -98,10 +98,16 @@ rule abricate:
     shell:
         "abricate {input} > {output}"
 
-rule mob_suite:
+rule mobsuite:
     input:
-        "assembly/contigs/{sample}.fasta"
+        ("assembly/contigs/{sample}.fasta")
     output:
-        ("plasmid/{sample}_out")
+        directory("plasmid/{sample}_out")
+    params:
+        conda_env = "mob"
     shell:
-        "mob_recon -i {input} -o {output}"
+        'set +eu '
+        ' && . $(conda info --base)/etc/profile.d/conda.sh '
+        ' && conda activate {params.conda_env} '
+        ' && echo $CONDA_PREFIX; ' 
+        ' mob_recon -i {input} -o {output} '

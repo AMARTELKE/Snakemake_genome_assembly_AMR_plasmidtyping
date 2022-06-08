@@ -1,0 +1,111 @@
+#input data
+from random import sample
+from sre_parse import expand_template
+
+
+SAMPS = ["1_S1", "2_S2"]
+rule all :
+    input:
+        "reads/multiqc/multiqc_report.html",
+        expand(["trimmed_data/{sample}_L001_R1_001.paired.fq.gz", 
+        "trimmed_data/{sample}_L001_R2_001.paired.fq.gz"], sample=SAMPS),
+        expand("assembly/{sample}", sample=SAMPS),
+        expand("assembly/{sample}.tmp.fasta", sample=SAMPS),
+        expand("assembly/contigs/{sample}.fasta", sample=SAMPS),
+        expand("annotation/{sample}", sample=SAMPS),
+        expand("amr/{sample}.tab", sample=SAMPS),
+        expand("plasmid/{sample}_out", sample=SAMPS)
+#fastqc quality check
+rule fastqc: 
+    input: 
+        expand(["reads/{sample}_L001_R1_001.fastq.gz",
+        "reads/{sample}_L001_R2_001.fastq.gz"], sample=SAMPS) 
+    output: 
+        expand(["reads/fastqc/{sample}_L001_R1_001_fastqc.html",
+        "reads/fastqc/{sample}_L001_R2_001_fastqc.html"], sample=SAMPS)
+    shell:
+        "fastqc {input} -o reads/fastqc"
+
+#merge results   
+rule multiqc: 
+    input: 
+        expand(["reads/fastqc/{sample}_L001_R1_001_fastqc.html",
+        "reads/fastqc/{sample}_L001_R2_001_fastqc.html"], sample=SAMPS),
+    output:
+        "reads/multiqc/multiqc_report.html"
+    shell: 
+        "multiqc reads -o reads/multiqc"
+
+# trim by trimmomatic
+rule trimmomatic_PE:
+    input:
+        fwd="reads/{sample}_L001_R1_001.fastq.gz",
+        rev="reads/{sample}_L001_R2_001.fastq.gz"
+    output:
+        fwd_paired="trimmed_data/{sample}_L001_R1_001.paired.fq.gz",
+        fwd_unpaired="trimmed_data/{sample}_L001_R1_001.unpaired.fq.gz",
+        rev_paired="trimmed_data/{sample}_L001_R2_001.paired.fq.gz",
+        rev_unpaired="trimmed_data/{sample}_L001_R2_001.unpaired.fq.gz"
+    shell: 
+        "trimmomatic PE {input.fwd} {input.rev} {output.fwd_paired} {output.fwd_unpaired} {output.rev_paired} {output.rev_unpaired} ILLUMINACLIP:TruSeq3-PE.fa:2:30:10 \LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36"
+
+#assembly
+rule unicycler:
+    input:
+        fwd="trimmed_data/{sample}_L001_R1_001.paired.fq.gz",  
+        rev="trimmed_data/{sample}_L001_R2_001.paired.fq.gz"
+    output:
+        directory("assembly/{sample}")
+    params:
+        min_len="200"
+    shell:
+         "unicycler -1 {input.fwd} -2 {input.rev} -o {output} --min_fasta_length {params.min_len}"
+#change fasta file name   
+import os
+import tempfile
+rule copy_genome_contigs:
+    input:
+        "assembly/{sample}"
+    output:
+        temp=("assembly/{sample}.tmp.fasta")
+    shell:
+        ("scp {input}/assembly.fasta {output.temp}")
+
+rule change_contig_header_names:
+    input:
+        "assembly/{sample}.tmp.fasta"
+    output:
+        "assembly/contigs/{sample}.fasta"
+    script:
+        "change_fasta_header.py"
+
+rule annotate_contigs:
+    input:
+        "assembly/contigs/{sample}.fasta"
+    output:
+        result=("annotation/{sample}")
+    params:
+        gram="neg",
+        genus="Escherichia"
+    log:
+        "annotation/log/{sample}.log"
+    shell:
+        "prokka --outdir {output.result} --prefix {wildcards.sample} "
+        "--locustag {wildcards.sample} --rfam --gram {params.gram} --genus {params.genus} "
+        "{input} || :"
+
+rule abricate:
+    input:
+        "assembly/contigs/{sample}.fasta"
+    output:
+        "amr/{sample}.tab"
+    shell:
+        "abricate {input} > {output}"
+
+rule mob_suite:
+    input:
+        "assembly/contigs/{sample}.fasta"
+    output:
+        ("plasmid/{sample}_out")
+    shell:
+        "mob_recon -i {input} -o {output}"

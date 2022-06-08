@@ -1,0 +1,16 @@
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - snakemake-minimal >=5.24.1
+  - jinja2 =2.11
+  - networkx =2.5
+  - fastqc 0.11.9
+  - pysam =0.15
+  - trimmomatic =0.36
+  - multiqc =1.6
+  - unicycler =0.5.0
+  - abricate =0.8.13
+  - prokka =1.13.4
+  - quast =5.0.2
+  - blast =2.12.0
